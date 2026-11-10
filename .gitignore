@@ -1,0 +1,8 @@
+/CrmAccess/credentials.json
+/CrmAccess/appsettings.json
+/CrmAccess/appsettings.Local.json
+/.copilot-work/
+**/bin/
+**/obj/
+**/node_modules/
+.vs/
