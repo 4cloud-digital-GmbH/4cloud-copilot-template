@@ -24,6 +24,9 @@ if (-not $Status -and $Stage -eq "PROD" -and -not $AllowProdWrite) {
 }
 . (Join-Path $PSScriptRoot "Common.ps1")
 $config = Get-ProjectConfig
+if (-not $Status -and [string]::IsNullOrWhiteSpace($config.Deployment.PacProfile)) {
+  throw "Lokales Pipeline-Deployment ist nicht eingerichtet: Deployment.PacProfile fehlt. Bereitstellung in Power Apps verwenden."
+}
 $dv = Join-Path $PSScriptRoot "dv.ps1"
 $pipelineNames = @{
   TEST = $config.Deployment.TestPipelineName

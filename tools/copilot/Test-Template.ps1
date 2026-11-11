@@ -286,6 +286,12 @@ try {
   Assert-Throws { & "$tools\Deploy-Pipeline.ps1" -SolutionName Task123Example -Stage PROD } "PROD"
   Assert-True ($global:offlineRequests.Count -eq 0) "Prod-Sperren müssen vor Remote-Aufrufen greifen"
   $changed = $filledConfig | ConvertFrom-Json
+  $changed.Deployment.PacProfile = ""
+  $changed | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $configFile
+  Get-ProjectConfig -Root $fixture | Out-Null
+  Assert-Throws { & "$tools\Deploy-Pipeline.ps1" -SolutionName Task123Example -Stage TEST } "PacProfile"
+  Assert-True ($global:offlineRequests.Count -eq 0 -and $global:offlinePacCalls.Count -eq 0) "Ohne PAC-Profil kein Remote-Aufruf oder CLI-Deployment"
+  $changed = $filledConfig | ConvertFrom-Json
   $changed.Environments.host = $changed.Environments.prod
   $changed | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $configFile
   Assert-Throws { & "$tools\dv.ps1" -Env host -Path accounts -Method POST -Body @{} } "Prod"

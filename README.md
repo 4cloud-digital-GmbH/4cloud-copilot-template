@@ -22,9 +22,10 @@ ausführen oder verantwortliche Administratoren darum bitten:
    oder DevOps-Status. Nicht belegbare Werte werden nicht automatisch geraten.
    Azure DevOps wird immer verwendet. Copilot ermittelt Organisation und Projekt
    zuerst über Azure-DevOps-MCP und fragt nur bei fehlendem Zugriff oder
-   mehrdeutiger Zuordnung nach. Auftragsbezogene Lese-/Schreiboperationen sind
-   erlaubt; kein separates Zugriffsformular und keine Test-Schreibaktionen beim
-   Setup. Der Kundenname
+   mehrdeutiger Zuordnung nach. Projektbezogene Leseoperationen sind ohne
+   zusätzliche Freigabe erlaubt, auch in UAT/Prod. Vor Remote-Schreibaktionen
+   fragt Copilot nach Freigabe für die konkrete Änderung und das Ziel.
+   Keine Test-Schreibaktionen beim Setup. Der Kundenname
    (`Project.Customer`) entspricht immer dem exakten DevOps-Projektnamen;
    er wird nicht separat erfragt. Vor Pipeline-
    Recherche klärt es Vorhandensein und Nutzung der Deploymentpipelines.
@@ -43,8 +44,10 @@ ausführen oder verantwortliche Administratoren darum bitten:
    zuständigen Administrator einbeziehen.
 5. **Lokale Tools anmelden:** Für `DevOps.ps1` Azure CLI installieren und sich
    separat mit `az login` anmelden. Nur für bestätigte
-   Pipeline-Deployments Power Platform CLI und ein PAC-Profil für den
-   konfigurierten Pipeline-Host einrichten. Geheimnisse nicht als
+   lokale Pipeline-Deployments Power Platform CLI und ein PAC-Profil für den
+   konfigurierten Pipeline-Host einrichten. Bei ausschließlicher Bereitstellung
+   in Power Apps ist kein PAC-Profil nötig: `Deployment.PacProfile` bleibt leer.
+   Andere Hilfsskripte und lesende Statusabfragen bleiben nutzbar. Geheimnisse nicht als
    Kommandozeilenargument übergeben.
 6. **Ergebnis und Git prüfen:** Automatisch übernommene Werte und Dateikonflikte
    überprüfen. Sicherstellen, dass `CrmAccess\credentials.json` und
@@ -54,8 +57,8 @@ ausführen oder verantwortliche Administratoren darum bitten:
    `Test-Template.ps1` arbeiten offline und bestätigen keine echten
    Berechtigungen oder Verbindungen. Bei einem ausdrücklichen Rechercheauftrag
    kann Copilot lesende Azure-DevOps-/Power-Platform-MCP-Abfragen für das
-   benannte Projekt bzw. DEV verwenden. UAT/Prod auch lesend nur nach
-   ausdrücklicher Bestätigung abfragen. Verbindungen und Deployments anschließend
+   zugeordnete Projekt und seine Umgebungen ohne weitere Bestätigung verwenden,
+   auch in UAT/Prod. Verbindungen und Deployments anschließend
    separat gezielt auf Dev/Test prüfen.
 
 Produktionsänderungen benötigen weiterhin eine ausdrückliche Freigabe im aktuellen
@@ -93,7 +96,8 @@ Der Ablauf:
    Power-Platform-MCP in DEV (Publisher der konkreten Solution, Pipeline, Stages)
    lesend durchsuchen. Test- und Prod-Pipeline können getrennte Namen haben.
    Bei fehlendem Zugriff oder ohne Treffer den Grund nennen
-   und gezielt nachfragen; UAT/Prod nur nach separater Lesefreigabe abfragen.
+   und gezielt nachfragen. UAT/Prod dürfen projektbezogen ohne zusätzliche
+   Lesefreigabe abgefragt werden; Remote-Schreibaktionen benötigen Freigabe.
 4. **Offene Fragen klären:** Nach der Recherche fehlende oder widersprüchliche,
    nicht geheime Angaben in kleinen thematischen Gruppen vor der Fertigmeldung
    erfragen. Keine Kunden-, Umgebungs- oder Pipelinewerte erraten. Ein

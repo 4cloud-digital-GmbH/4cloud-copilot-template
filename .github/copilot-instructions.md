@@ -32,17 +32,16 @@ Wiederverwendbare Arbeitsgrundlage für D365-/Dataverse-Kundenprojekte
   Freigabe des Nutzers im aktuellen Gespräch; vorab betroffene Komponenten sichern.
 - `Environments.host`: Host der Power-Platform-Pipeline; kann von Dev abweichen.
 - `-AllowProdWrite` ist nur eine technische Sperre, niemals eine fachliche Freigabe.
-- Bei reiner Dateieinrichtung keine Anmeldung oder Remote-Abfrage. Bei
-  ausdrücklichem Rechercheauftrag ausschließlich lesende MCP-Abfragen zum
-  benannten Azure-DevOps-Projekt und zur DEV-Umgebung; UAT/Prod auch lesend nur
-  nach ausdrücklicher Bestätigung für die jeweilige Umgebung.
+- Kopierskript und Offline-Tests führen keine Remote-Abfragen aus.
+  Projektbezogene Leseabfragen über MCP sind ohne weitere Bestätigung erlaubt,
+  auch in UAT/Prod. Auf das zugeordnete Projekt und seine Umgebungen begrenzen.
 - Azure DevOps wird immer verwendet; nicht nach seiner Nutzung fragen.
   Organisation und Projekt zuerst über Azure-DevOps-MCP ermitteln; nur bei
   fehlendem Zugriff oder mehrdeutiger Zuordnung nachfragen. Der Setup-Auftrag
   umfasst diese Recherche, ohne separates Zugriffsformular.
-- Azure-DevOps-MCP für auftragsbezogene Lese- und Schreiboperationen verwenden.
-  Keine Test-Schreibaktionen beim Setup; nur konkret angeforderte Änderungen
-  ausführen. Dies erteilt keine Dataverse-UAT-/Prod-Freigabe.
+- Vor jeder Remote-Schreiboperation (Azure DevOps oder Power Platform) die
+  konkrete Änderung und das Ziel nennen und ausdrücklich freigeben lassen.
+  Keine Test-Schreibaktionen beim Setup; Lesefreigaben erlauben keine Änderungen.
 - Vor Pipeline-Recherche fragen, ob Power-Platform-Pipelines vorhanden sind und
   verwendet werden sollen. Vor Client-ID-Abfragen zusätzlich klären, ob
   ein Service Principal für lokale Skripte existiert und für welche Umgebungen
@@ -79,7 +78,10 @@ Wiederverwendbare Arbeitsgrundlage für D365-/Dataverse-Kundenprojekte
   Publisher-Präfix: `Project.SolutionPublisherPrefix`.
 - Nur geänderte Komponenten aufnehmen; Entitäten nicht pauschal mit allen
   Unterkomponenten hinzufügen.
-- Standardweg: `tools\copilot\Deploy-Pipeline.ps1`, TEST vor PROD.
+- Deploymentweg beim Setup klären: bestehende Pipeline in Power Apps oder
+  ausdrücklich gewünschtes lokales `tools\copilot\Deploy-Pipeline.ps1`.
+  Bei Power Apps `Deployment.PacProfile` leer lassen und nicht lokal deployen.
+  TEST vor PROD.
   Pipeline und Stage-Namen aus `Deployment`. PROD erhält dieselbe Version wie TEST.
 - `Import-Solution.ps1` nur als begründete, dokumentierte Ausnahme.
 - Importe/Deployments nicht parallel ausführen. Ein einzelnes Skript kann

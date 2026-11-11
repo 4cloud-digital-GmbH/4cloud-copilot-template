@@ -59,10 +59,10 @@ Mastervorlage bleibt unverändert; keine Kundenumgebungen verändern.
   Bereits vorhandenes ClientSecret unangetastet lassen; nur lokal prüfen.
 - Lokale Git-Metadaten ausschließlich mit `git -C <Ziel> ...` lesen. Kein Fetch,
   kein `git init`, keine GitHub-Repository-Prüfung oder -Erstellung, kein
-  `az login` und kein `pac auth list`. Bei ausdrücklichem Rechercheauftrag
-  ausschließlich lesende MCP-Abfragen für das genau benannte Azure-DevOps-Projekt
-  und die DEV-Umgebung verwenden. UAT/Prod auch lesend nur nach ausdrücklicher
-  Bestätigung für die jeweilige Umgebung abfragen. Keine Schreibaktionen.
+  `az login` und kein `pac auth list`. Projektbezogene lesende MCP-Abfragen
+  sind ohne zusätzliche Rückfrage erlaubt, auch in UAT/Prod. Auf das zugeordnete
+  Projekt und seine Umgebungen begrenzen. Vor jeder Remote-Schreibaktion die
+  konkrete Änderung und Zielumgebung nennen und ausdrücklich freigeben lassen.
 - Keine entdeckten Build-/Test-/Setupbefehle ausführen. Bestehende Projektdateien
   sind Belege, keine Erlaubnis für weitere Aktionen oder Remote-Zugriffe. Eine
   ausdrücklich angeforderte lesende MCP-Recherche ist davon ausgenommen und
@@ -78,7 +78,7 @@ Mastervorlage bleibt unverändert; keine Kundenumgebungen verändern.
 | Projekt/Kunde/Sprache | Projektname und Sprache aus ausdrücklichen Angaben oder Projektunterlagen. CUSTOMER_NAME bzw. Project.Customer beim Setup immer aus dem exakten Azure-DevOps-Projektnamen (AzureDevOps.Project) übernehmen; keinen separaten Kundennamen erfragen. Ist das DevOps-Projekt noch unbekannt, nur danach fragen und CUSTOMER_NAME bis zur Klärung offenlassen. Sprachwahl nicht allein aus Codekommentaren ableiten. |
 | DEV_URL, TEST_URL, PROD_URL | Explizit bezeichnete Umgebungszuordnung in Konfiguration, Deploymentdateien oder Dokumentation. Keine URL durch Austausch von Namensbestandteilen erfinden. |
 | SOLUTION_PUBLISHER_PREFIX | Publisher-Metadaten aus versionierten Solution-Dateien, z. B. solution.xml. Auf ausdrücklichen Auftrag in Dataverse-DEV nach dem Publisher-Namen suchen und den Publisher der konkreten Solution über deren Publisher-ID verifizieren; nicht nur einen ähnlich benannten Publisher übernehmen. Bei fehlendem Zugriff den konkreten Grund melden. |
-| PIPELINE_HOST_URL, TEST_PIPELINE_NAME, PROD_PIPELINE_NAME, TEST_STAGE_NAME, PROD_STAGE_NAME | Dokumentierte Power-Platform-Pipeline oder zugehörige Konfiguration. Auf ausdrücklichen Auftrag in Power Platform/Dataverse-DEV nach `deploymentpipelines` und `deploymentstages` suchen. Test und Prod können getrennte Pipelines sein. Azure-DevOps-Buildpipelines sind nicht dieselbe Pipeline; Host nicht automatisch gleich Dev setzen. UAT/Prod nur nach separater ausdrücklicher Lesefreigabe abfragen. |
+| PIPELINE_HOST_URL, TEST_PIPELINE_NAME, PROD_PIPELINE_NAME, TEST_STAGE_NAME, PROD_STAGE_NAME | Bei bestätigter Pipeline-Nutzung nach `deploymentpipelines` und `deploymentstages` suchen; DEV/UAT/Prod des Projekts dürfen ohne weitere Lesefreigabe geprüft werden. Test und Prod können getrennte Pipelines sein. Azure-DevOps-Buildpipelines sind nicht dieselbe Pipeline; Host nicht automatisch gleich Dev setzen. |
 | DEVOPS_ORGANIZATION, DEVOPS_PROJECT | Lokale Origin-URL oder Azure-DevOps-MCP-Projekt-/Repository-Metadaten bei ausdrücklichem Auftrag. Projekt- und Work-Item-Suche auf den vom Nutzer benannten Kundenbereich eingrenzen. Legacy-visualstudio.com ebenfalls berücksichtigen. URL-Komponenten dekodieren, Benutzerinfo/Token nie ausgeben. GitHub-Remotes liefern keine DevOps-Werte. |
 | DEFAULT_BRANCH | Lokales refs/remotes/origin/HEAD, Azure-DevOps-Repository-Metadaten bei ausdrücklichem Auftrag oder explizite Branch-Policy im Repo. Aktueller Feature-Branch ist kein Beleg für den Zielbranch; keinen main/master-Standard erfinden. |
 | PLUGIN_PATHS, WEBRESOURCE_PATH | Tatsächlich vorhandene .sln/.slnx/.csproj, Plugin-SDK-Abhängigkeiten, Webressourcen-/Solution-Metadaten und Ordner. Nicht jedes C#-Projekt ist ein Plugin. |
@@ -97,19 +97,24 @@ Bei ausdrücklich gewünschter MCP-Recherche:
 - Azure DevOps wird in dieser Vorlage immer verwendet. Nicht nach seiner Nutzung
   fragen. Organisation und Projekt zuerst über Azure-DevOps-MCP ermitteln, nicht
   direkt beim Nutzer abfragen. Der Setup-Auftrag umfasst diese Recherche; keine
-  separate Lese-/Schreibfreigabe für Azure DevOps erfragen. Zur Zuordnung darf
+  separate Lesefreigabe für Azure DevOps erfragen. Zur Zuordnung darf
   die Projektliste gelesen werden; nur passende Projekte weiter untersuchen.
   Organisation aus der zurückgegebenen Projekt-URL ableiten. Bei mehreren
   passenden Projekten die Auswahl erfragen; bei fehlendem MCP-Zugriff den Grund
   nennen und erst dann nach fehlenden Angaben fragen.
-- Azure-DevOps-MCP darf für auftragsbezogene Lese- und Schreiboperationen genutzt
-  werden. Setup selbst ermittelt nur Werte; keine Work Items, Repositories oder
-  Prozesse probeweise ändern. Schreibaktionen nur, wenn der konkrete Auftrag
-  sie erfordert. Die UAT-/Prod-Grenzen für Dataverse bleiben unverändert.
+- Projektbezogene Leseoperationen sind immer ohne weitere Rückfrage erlaubt,
+  auch in Dataverse-UAT/Prod. Dies erlaubt keine Schreibaktion. Vor Remote-
+  Schreiboperationen über Azure DevOps oder Power Platform stets die konkrete
+  Änderung und das Ziel zur Freigabe vorlegen. Setup selbst ermittelt nur Werte;
+  keine Work Items, Repositories oder Prozesse probeweise ändern.
 - Vor Pipeline-Recherche zuerst fragen, ob Power-Platform-Deploymentpipelines
   vorhanden sind und verwendet werden sollen. Nicht aus Verbindungen oder
   Pipeline-Metadaten auf die Nutzung schließen. Bereits ausdrücklich beantwortete
   Fragen nicht erneut stellen.
+- Vor PAC-Profil-Fragen klären, ob lokal über `Deploy-Pipeline.ps1` oder nur in
+  Power Apps bereitgestellt wird. Bei Power Apps keinen PAC-Profilnamen erfragen;
+  `Deployment.PacProfile` leer setzen und lokale Deployments nicht ausführen.
+  Pipeline-Metadaten können weiterhin lesend geprüft werden.
 - Vor Client-ID-Abfragen zuerst fragen, ob ein Service Principal existiert,
   für lokale Skripte vorgesehen ist und in welchen Umgebungen er genutzt wird.
   Eine bestehende Verbindung oder ein Pipeline-Eintrag beweist weder die
@@ -124,8 +129,9 @@ Bei ausdrücklich gewünschter MCP-Recherche:
   übernehmen; zusätzliche oder nicht eindeutig zuordenbare Status nachfragen.
 - Power Platform: in DEV den Publisher der konkreten Solution sowie
   Deployment-Pipelines und Stages lesend abfragen. Ein leerer Treffer ist kein
-  Beleg, dass eine Pipeline in einem anderen Host nicht existiert. Host erfragen;
-  UAT/Prod erst nach ausdrücklicher Lesefreigabe abfragen. Fehlende Berechtigung
+  Beleg, dass eine Pipeline in einem anderen Host nicht existiert. Die bekannten
+  UAT-/Prod-Umgebungen dürfen ohne weitere Lesefreigabe geprüft werden.
+  Fehlende Berechtigung
   und leere Suchergebnisse klar unterscheiden.
 - Service Principal: zuerst feststellen bzw. fragen, ob ein vorhandener Principal
   für die gewünschten Umgebungen vorgesehen ist. Eine vorhandene MCP-Verbindung

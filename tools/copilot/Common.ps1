@@ -37,7 +37,7 @@ function Get-ProjectConfig {
     $config.Deployment | Add-Member -NotePropertyName TestPipelineName -NotePropertyValue $legacyPipelineName
     $config.Deployment | Add-Member -NotePropertyName ProdPipelineName -NotePropertyValue $legacyPipelineName
   }
-  foreach ($key in @("TestPipelineName", "ProdPipelineName", "TestStageName", "ProdStageName", "PacProfile")) {
+  foreach ($key in @("TestPipelineName", "ProdPipelineName", "TestStageName", "ProdStageName")) {
     if ([string]::IsNullOrWhiteSpace($config.Deployment.$key)) { throw "Deployment.$key fehlt." }
   }
   if ($config.Deployment.TestPipelineName -eq $config.Deployment.ProdPipelineName -and
