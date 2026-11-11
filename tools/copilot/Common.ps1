@@ -6,7 +6,7 @@ function Get-ProjectConfig {
   if (-not (Test-Path -LiteralPath $file)) { throw "Lokale appsettings.json fehlt. Skill project-setup verwenden." }
   $json = Get-Content -LiteralPath $file -Raw
   if ($json -match '\{\{[A-Z][A-Z0-9_]*\}\}') {
-    throw "Projektkonfiguration enthaelt Platzhalter. Skill project-setup verwenden."
+    throw "Projektkonfiguration enthält Platzhalter. Skill project-setup verwenden."
   }
   $config = $json | ConvertFrom-Json
   foreach ($section in @("Project", "Environments", "AzureDevOps", "Deployment", "Repository")) {
@@ -23,7 +23,7 @@ function Get-ProjectConfig {
     $config.Environments.$key = $uri.GetLeftPart([UriPartial]::Authority).TrimEnd('/')
   }
   $urls = @($config.Environments.dev, $config.Environments.test, $config.Environments.prod)
-  if (@($urls | Sort-Object -Unique).Count -ne 3) { throw "Dev, Test und Prod muessen getrennte URLs haben." }
+  if (@($urls | Sort-Object -Unique).Count -ne 3) { throw "Dev, Test und Prod müssen getrennte URLs haben." }
   foreach ($key in @("Organization", "Project")) {
     if ([string]::IsNullOrWhiteSpace($config.AzureDevOps.$key)) { throw "AzureDevOps.$key fehlt." }
   }
@@ -34,7 +34,7 @@ function Get-ProjectConfig {
     if ([string]::IsNullOrWhiteSpace($config.Deployment.$key)) { throw "Deployment.$key fehlt." }
   }
   if ($config.Deployment.TestStageName -eq $config.Deployment.ProdStageName) {
-    throw "Test- und Prod-Stage muessen verschieden sein."
+    throw "Test- und Prod-Stage müssen verschieden sein."
   }
   $config
 }
@@ -47,7 +47,7 @@ function Get-ProjectCredentials {
   foreach ($key in @("TenantId", "ClientId", "ClientSecret")) {
     $value = [string]$credentials.$key
     if ([string]::IsNullOrWhiteSpace($value) -or $value -match '\{\{[A-Z][A-Z0-9_]*\}\}') {
-      throw "credentials.json: $key fehlt oder ist noch ein Platzhalter. Lokal ausfuellen, nicht im Chat."
+      throw "credentials.json: $key fehlt oder ist noch ein Platzhalter. Lokal ausfüllen, nicht im Chat."
     }
   }
   foreach ($key in @("TenantId", "ClientId")) {
@@ -66,7 +66,7 @@ function Get-DataverseConnection {
   $config = Get-ProjectConfig
   $base = $config.Environments.$Env
   if ($Write -and ($Env -eq "prod" -or $base -eq $config.Environments.prod) -and -not $AllowProdWrite) {
-    throw "Prod ist nur lesend erlaubt. Schreiben nur mit -AllowProdWrite nach ausdruecklicher Freigabe."
+    throw "Prod ist nur lesend erlaubt. Schreiben nur mit -AllowProdWrite nach ausdrücklicher Freigabe."
   }
   $credentials = Get-ProjectCredentials
   $token = Invoke-RestMethod -Method Post `
@@ -77,7 +77,7 @@ function Get-DataverseConnection {
       grant_type = "client_credentials"
     }
   if (-not $token.access_token) { throw "Kein Dataverse-Zugriffstoken erhalten." }
-  # Tokens bleiben im Prozess; keine kundenuebergreifenden Token-Dateien.
+  # Tokens bleiben im Prozess; keine kundenübergreifenden Token-Dateien.
   @{ Base = $base; Headers = @{ Authorization = ("Bearer " + [string]$token.access_token) } }
 }
 
@@ -94,8 +94,8 @@ function Wait-DataverseImport {
   $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
   $dv = Join-Path $PSScriptRoot "dv.ps1"
   while (& $dv -Env $Env -Path "importjobs?`$select=solutionname&`$filter=completedon eq null and startedon ne null") {
-    if ((Get-Date) -ge $deadline) { throw "Timeout: Auf $Env laeuft weiterhin ein Import. Kein neuer Import gestartet." }
-    Write-Host "[$Env] anderer Import laeuft, warte 30 s."
+    if ((Get-Date) -ge $deadline) { throw "Timeout: Auf $Env läuft weiterhin ein Import. Kein neuer Import gestartet." }
+    Write-Host "[$Env] anderer Import läuft, warte 30 s."
     Start-Sleep -Seconds 30
   }
 }

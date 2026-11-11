@@ -1,9 +1,9 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-  Liest und bearbeitet Azure-DevOps-Work-Items fuer das konfigurierte Projekt.
+  Liest und bearbeitet Azure-DevOps-Work-Items für das konfigurierte Projekt.
 .DESCRIPTION
-  Azure CLI und az login erforderlich. Kommentare als HTML uebergeben.
+  Azure CLI und az login erforderlich. Kommentare als HTML übergeben.
 #>
 param(
   [Parameter(Mandatory)][ValidateSet("Get", "Comments", "Mine", "Comment", "SetState", "Assign")][string]$Action,
@@ -23,7 +23,7 @@ if ($Action -eq "Assign" -and -not $AssignTo) { throw "-AssignTo angeben." }
 $organization = $config.AzureDevOps.Organization
 $project = [uri]::EscapeDataString($config.AzureDevOps.Project)
 $token = az account get-access-token --resource 499b84ac-1321-427f-aa17-267ca6975798 --query accessToken -o tsv
-if ($LASTEXITCODE -ne 0 -or -not $token) { throw "Kein Azure-DevOps-Token. Lokal az login ausfuehren." }
+if ($LASTEXITCODE -ne 0 -or -not $token) { throw "Kein Azure-DevOps-Token. Lokal az login ausführen." }
 $headers = @{ Authorization = "Bearer $token" }
 $base = "https://dev.azure.com/$organization/$project/_apis/wit"
 
@@ -38,7 +38,7 @@ function Resolve-Identity([string]$Mail) {
   $matches = @($identities | Where-Object {
     $_.properties.Mail.'$value' -eq $Mail -or $_.properties.Account.'$value' -eq $Mail
   })
-  if ($matches.Count -ne 1) { throw "Identitaet nicht eindeutig ueber E-Mail aufloesbar." }
+  if ($matches.Count -ne 1) { throw "Identität nicht eindeutig über E-Mail auflösbar." }
   $matches[0]
 }
 

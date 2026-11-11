@@ -1,7 +1,7 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-  Fuehrt Offline-Tests mit temporaeren Konfigurationen und simulierten Diensten aus.
+  Führt Offline-Tests mit temporären Konfigurationen und simulierten Diensten aus.
 #>
 $ErrorActionPreference = "Stop"
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
@@ -16,7 +16,7 @@ function Assert-Throws([scriptblock]$Action, [string]$Pattern) {
   $caught = $false
   try { & $Action | Out-Null }
   catch {
-    if ($_.Exception.Message -notmatch $Pattern) { throw "Unerwarteter Fehler beim Test fuer: $Pattern" }
+    if ($_.Exception.Message -notmatch $Pattern) { throw "Unerwarteter Fehler beim Test für: $Pattern" }
     $caught = $true
   }
   Assert-True $caught "Erwarteter Fehler fehlt: $Pattern"
@@ -32,7 +32,7 @@ foreach ($name in @("appsettings.example.json", "credentials.example.json", "app
   $file = Join-Path $root "CrmAccess\$name"
   if (Test-Path -LiteralPath $file) {
     try { Get-Content -LiteralPath $file -Raw | ConvertFrom-Json | Out-Null }
-    catch { throw "Ungueltiges JSON in CrmAccess\$name (Inhalt wird nicht ausgegeben)." }
+    catch { throw "Ungültiges JSON in CrmAccess\$name (Inhalt wird nicht ausgegeben)." }
     $script:checks++
   }
 }
@@ -42,7 +42,7 @@ $setup = Get-Content -LiteralPath (Join-Path $root ".github\skills\project-setup
 $placeholders = @([regex]::Matches("$settingsTemplate`n$credentialsTemplate", '\{\{([A-Z][A-Z0-9_]*)\}\}') |
   ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
 foreach ($name in $placeholders) {
-  Assert-True ($setup -match "\b$([regex]::Escape($name))\b") "Einrichtungsfrage fehlt fuer $name"
+  Assert-True ($setup -match "\b$([regex]::Escape($name))\b") "Einrichtungsfrage fehlt für $name"
 }
 $ignore = Get-Content -LiteralPath (Join-Path $root ".gitignore")
 foreach ($entry in @("/CrmAccess/credentials.json", "/CrmAccess/appsettings.json", "/.copilot-work/")) {
@@ -55,6 +55,62 @@ try {
   Get-ChildItem -LiteralPath $PSScriptRoot -Filter "*.ps1" |
     Where-Object Name -ne "Test-Template.ps1" |
     Copy-Item -Destination (Join-Path $fixture "tools\copilot")
+  $initialize = Join-Path $PSScriptRoot "Initialize-Project.ps1"
+  $customer = Join-Path $fixture "Kundenprojekt mit Leerzeichen"
+  New-Item -ItemType Directory -Path $customer | Out-Null
+  $masterBefore = (Get-FileHash -LiteralPath (Join-Path $root "CrmAccess\appsettings.example.json")).Hash
+  $copied = @(& $initialize -ProjectPath $customer)
+  Assert-True (Test-Path -LiteralPath (Join-Path $customer ".github\skills\project-setup\SKILL.md")) "Zentralen Skill ins Ziel übernehmen"
+  Assert-True (Test-Path -LiteralPath (Join-Path $customer "tools\copilot\dv.ps1")) "Hilfsskripte ins Ziel übernehmen"
+  Assert-True (-not (Test-Path -LiteralPath (Join-Path $customer ".git"))) "Keine Master-Git-Metadaten kopieren"
+  foreach ($name in @("appsettings", "credentials")) {
+    $local = Get-Content -LiteralPath (Join-Path $customer "CrmAccess\$name.json") -Raw
+    $example = Get-Content -LiteralPath (Join-Path $root "CrmAccess\$name.example.json") -Raw
+    Assert-True ($local -ceq $example) "Lokale $name nur aus dem Beispiel erzeugen"
+  }
+  $ignorePath = Join-Path $customer ".gitignore"
+  $ignoreBefore = [IO.File]::ReadAllText($ignorePath)
+  $secondCopy = @(& $initialize -ProjectPath $customer)
+  Assert-True (@($secondCopy | Where-Object Status -eq "Created").Count -eq 0) "Erneuter Aufruf erzeugt keine Dateien"
+  Assert-True ([IO.File]::ReadAllText($ignorePath) -ceq $ignoreBefore) "Ignore-Regeln bei Wiederholung nicht duplizieren"
+
+  $customerReadme = Join-Path $customer "README.md"
+  Set-Content -LiteralPath $customerReadme -Value "Vorhandene Kundendokumentation"
+  $customerConfig = Join-Path $customer "CrmAccess\appsettings.json"
+  Set-Content -LiteralPath $customerConfig -Value '{"Existing":"Kundenwert"}'
+  $customerCredentials = Join-Path $customer "CrmAccess\credentials.json"
+  Set-Content -LiteralPath $customerCredentials -Value '{"ClientSecret":"offline-existing-dummy"}'
+  Set-Content -LiteralPath $ignorePath -Value "custom-output/`n!/CrmAccess/credentials.json"
+  $preservedPaths = @($customerReadme, $customerConfig, $customerCredentials)
+  $beforeHashes = @($preservedPaths | ForEach-Object { (Get-FileHash -LiteralPath $_).Hash })
+  $conflicts = @(& $initialize -ProjectPath $customer)
+  $afterHashes = @($preservedPaths | ForEach-Object { (Get-FileHash -LiteralPath $_).Hash })
+  Assert-True (($beforeHashes -join ",") -eq ($afterHashes -join ",")) "Bestehende Dokumentation, Konfiguration und Secrets erhalten"
+  Assert-True (@($conflicts | Where-Object { $_.Path -eq "README.md" -and $_.Status -eq "Conflict" }).Count -eq 1) "Dateikonflikt statt Überschreiben melden"
+  $mergedIgnore = [IO.File]::ReadAllText($ignorePath)
+  Assert-True ($mergedIgnore.Contains("custom-output/")) "Vorhandene Ignore-Regeln erhalten"
+  Assert-True ($mergedIgnore.LastIndexOf("/CrmAccess/credentials.json") -gt $mergedIgnore.IndexOf("!/CrmAccess/credentials.json")) "Schutzregel nach vorhandener Ausnahme ergänzen"
+  Assert-True ((Get-FileHash -LiteralPath (Join-Path $root "CrmAccess\appsettings.example.json")).Hash -eq $masterBefore) "Master-Beispiel bleibt unverändert"
+  Assert-Throws { & $initialize -ProjectPath $root } "Mastervorlage"
+  Assert-Throws { & $initialize -ProjectPath (Split-Path -Parent $root) } "Mastervorlage"
+  Assert-Throws { & $initialize -ProjectPath "relative-path" } "absoluter Pfad"
+  Assert-Throws { & $initialize -ProjectPath (Join-Path $fixture "missing") } "Zielverzeichnis fehlt"
+  $blocked = Join-Path $fixture "blocked"
+  New-Item -ItemType Directory -Path (Join-Path $blocked ".github\copilot-instructions.md") | Out-Null
+  Assert-Throws { & $initialize -ProjectPath $blocked } "bereits ein Verzeichnis"
+  Assert-True (-not (Test-Path -LiteralPath (Join-Path $blocked ".gitignore"))) "Pfadkonflikt vor jeglichem Schreiben erkennen"
+
+  $junctionTarget = Join-Path $fixture "outside-target"
+  $linkedCustomer = Join-Path $fixture "linked-customer"
+  New-Item -ItemType Directory -Path $junctionTarget, $linkedCustomer | Out-Null
+  $junction = Join-Path $linkedCustomer ".github"
+  try {
+    New-Item -ItemType Junction -Path $junction -Target $junctionTarget | Out-Null
+    Assert-Throws { & $initialize -ProjectPath $linkedCustomer } "Junctions"
+    Assert-True (@(Get-ChildItem -LiteralPath $junctionTarget -Force).Count -eq 0) "Keine Dateien über Junction ins falsche Ziel kopieren"
+  } finally {
+    if (Test-Path -LiteralPath $junction) { [IO.Directory]::Delete($junction) }
+  }
   $global:offlineRequests = [Collections.Generic.List[object]]::new()
   $global:offlinePacCalls = [Collections.Generic.List[string]]::new()
   $global:offlineDeployedStage = $null
@@ -182,7 +238,7 @@ try {
   Assert-Throws { & "$tools\Import-Solution.ps1" -Env prod -Zip missing.zip } "Prod"
   Assert-Throws { & "$tools\Remove-ActiveCustomization.ps1" -Env prod -ComponentName WebResource -ComponentId ([guid]::Empty) } "Prod"
   Assert-Throws { & "$tools\Deploy-Pipeline.ps1" -SolutionName Task123Example -Stage PROD } "PROD"
-  Assert-True ($global:offlineRequests.Count -eq 0) "Prod-Sperren muessen vor Remote-Aufrufen greifen"
+  Assert-True ($global:offlineRequests.Count -eq 0) "Prod-Sperren müssen vor Remote-Aufrufen greifen"
   $changed = $filledConfig | ConvertFrom-Json
   $changed.Environments.host = $changed.Environments.prod
   $changed | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $configFile
@@ -251,5 +307,5 @@ try {
 } finally {
   Remove-Item -LiteralPath $fixture -Recurse -Force
 }
-"Offline-Tests erfolgreich: $script:checks Pruefungen; $($placeholders.Count) eindeutige Platzhalter mit Einrichtungsfragen."
-"Lokale Kundenwerte wurden nicht auf Vollstaendigkeit getestet; Mastervorlagen enthalten absichtlich Platzhalter."
+"Offline-Tests erfolgreich: $script:checks Prüfungen; $($placeholders.Count) eindeutige Platzhalter mit Einrichtungsfragen."
+"Lokale Kundenwerte wurden nicht auf Vollständigkeit getestet; Mastervorlagen enthalten absichtlich Platzhalter."

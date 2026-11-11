@@ -1,7 +1,7 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-  Exportiert eine Loesung standardmaessig managed nach .copilot-work.
+  Exportiert eine Lösung standardmäßig managed nach .copilot-work.
 #>
 param(
   [Parameter(Mandatory)][ValidatePattern('^[A-Za-z][A-Za-z0-9_]*$')][string]$SolutionName,
@@ -12,7 +12,7 @@ param(
 $ErrorActionPreference = "Stop"
 $dv = Join-Path $PSScriptRoot "dv.ps1"
 $solution = & $dv -Env $Env -Path "solutions?`$select=version&`$filter=uniquename eq '$SolutionName'"
-if (-not $solution) { throw "Loesung $SolutionName nicht auf $Env gefunden." }
+if (-not $solution) { throw "Lösung $SolutionName nicht auf $Env gefunden." }
 $result = & $dv -Env $Env -Method POST -Path "ExportSolution" -Body @{
   SolutionName = $SolutionName; Managed = (-not $Unmanaged)
 }
