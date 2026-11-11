@@ -25,16 +25,23 @@ if (-not $Status -and $Stage -eq "PROD" -and -not $AllowProdWrite) {
 . (Join-Path $PSScriptRoot "Common.ps1")
 $config = Get-ProjectConfig
 $dv = Join-Path $PSScriptRoot "dv.ps1"
-$pipelineName = ConvertTo-ODataLiteral $config.Deployment.PipelineName
-$pipelines = @(& $dv -Env host -Path "deploymentpipelines?`$select=deploymentpipelineid&`$filter=name eq '$pipelineName'")
-if ($pipelines.Count -ne 1) { throw "Pipeline muss im konfigurierten Host eindeutig vorhanden sein." }
-$pipelineId = $pipelines[0].deploymentpipelineid
+$pipelineNames = @{
+  TEST = $config.Deployment.TestPipelineName
+  PROD = $config.Deployment.ProdPipelineName
+}
+$stageNames = @{
+  TEST = $config.Deployment.TestStageName
+  PROD = $config.Deployment.ProdStageName
+}
 $stages = @{}
 foreach ($key in @("TEST", "PROD")) {
-  $name = if ($key -eq "TEST") { $config.Deployment.TestStageName } else { $config.Deployment.ProdStageName }
-  $name = ConvertTo-ODataLiteral $name
-  $records = @(& $dv -Env host -Path "deploymentstages?`$select=deploymentstageid&`$filter=name eq '$name' and _deploymentpipelineid_value eq $pipelineId")
-  if ($records.Count -ne 1) { throw "Stage $key muss innerhalb der Pipeline eindeutig vorhanden sein." }
+  $pipelineName = ConvertTo-ODataLiteral $pipelineNames[$key]
+  $pipelines = @(& $dv -Env host -Path "deploymentpipelines?`$select=deploymentpipelineid&`$filter=name eq '$pipelineName'")
+  if ($pipelines.Count -ne 1) { throw "Pipeline $key muss im konfigurierten Host eindeutig vorhanden sein." }
+  $pipelineId = $pipelines[0].deploymentpipelineid
+  $stageName = ConvertTo-ODataLiteral $stageNames[$key]
+  $records = @(& $dv -Env host -Path "deploymentstages?`$select=deploymentstageid&`$filter=name eq '$stageName' and _deploymentpipelineid_value eq $pipelineId")
+  if ($records.Count -ne 1) { throw "Stage $key muss innerhalb ihrer Pipeline eindeutig vorhanden sein." }
   $stages[$key] = $records[0].deploymentstageid
 }
 

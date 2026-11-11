@@ -30,31 +30,54 @@ function Get-ProjectConfig {
   if ($config.AzureDevOps.Organization -notmatch '^[A-Za-z0-9][A-Za-z0-9-]*$') {
     throw "AzureDevOps.Organization muss ein Organisations-Slug ohne URL sein."
   }
-  foreach ($key in @("PipelineName", "TestStageName", "ProdStageName", "PacProfile")) {
+  $legacyPipelineName = [string]$config.Deployment.PipelineName
+  if (-not [string]::IsNullOrWhiteSpace($legacyPipelineName) -and
+      [string]::IsNullOrWhiteSpace($config.Deployment.TestPipelineName) -and
+      [string]::IsNullOrWhiteSpace($config.Deployment.ProdPipelineName)) {
+    $config.Deployment | Add-Member -NotePropertyName TestPipelineName -NotePropertyValue $legacyPipelineName
+    $config.Deployment | Add-Member -NotePropertyName ProdPipelineName -NotePropertyValue $legacyPipelineName
+  }
+  foreach ($key in @("TestPipelineName", "ProdPipelineName", "TestStageName", "ProdStageName", "PacProfile")) {
     if ([string]::IsNullOrWhiteSpace($config.Deployment.$key)) { throw "Deployment.$key fehlt." }
   }
-  if ($config.Deployment.TestStageName -eq $config.Deployment.ProdStageName) {
-    throw "Test- und Prod-Stage müssen verschieden sein."
+  if ($config.Deployment.TestPipelineName -eq $config.Deployment.ProdPipelineName -and
+      $config.Deployment.TestStageName -eq $config.Deployment.ProdStageName) {
+    throw "Test- und Prod-Stage derselben Pipeline müssen verschieden sein."
   }
   $config
 }
 
 function Get-ProjectCredentials {
-  param([string]$Root = (Join-Path $PSScriptRoot "..\.."))
+  param(
+    [ValidateSet("dev", "test", "prod", "host")][string]$Env = "dev",
+    [string]$Root = (Join-Path $PSScriptRoot "..\..")
+  )
   $file = Join-Path $Root "CrmAccess\credentials.json"
   if (-not (Test-Path -LiteralPath $file)) { throw "Lokale credentials.json fehlt." }
   $credentials = Get-Content -LiteralPath $file -Raw | ConvertFrom-Json
+  $environmentCredentials = if ($credentials.Environments) {
+    $credentials.Environments.$Env
+  } else {
+    $credentials
+  }
+  if (-not $environmentCredentials) { throw "credentials.json: Eintrag für $Env fehlt." }
   foreach ($key in @("TenantId", "ClientId", "ClientSecret")) {
-    $value = [string]$credentials.$key
+    $value = [string]$(if ($key -eq "TenantId") { $credentials.TenantId } else { $environmentCredentials.$key })
     if ([string]::IsNullOrWhiteSpace($value) -or $value -match '\{\{[A-Z][A-Z0-9_]*\}\}') {
-      throw "credentials.json: $key fehlt oder ist noch ein Platzhalter. Lokal ausfüllen, nicht im Chat."
+      $field = if ($key -eq "TenantId") { "TenantId" } else { "Environments.$Env.$key" }
+      throw "credentials.json: $field fehlt oder ist noch ein Platzhalter. Lokal ausfüllen, nicht im Chat."
     }
+  }
+  $resolvedCredentials = [pscustomobject]@{
+    TenantId = [string]$credentials.TenantId
+    ClientId = [string]$environmentCredentials.ClientId
+    ClientSecret = [string]$environmentCredentials.ClientSecret
   }
   foreach ($key in @("TenantId", "ClientId")) {
     $guid = [guid]::Empty
-    if (-not [guid]::TryParse($credentials.$key, [ref]$guid)) { throw "credentials.json: $key ist keine GUID." }
+    if (-not [guid]::TryParse($resolvedCredentials.$key, [ref]$guid)) { throw "credentials.json: $Env.$key ist keine GUID." }
   }
-  $credentials
+  $resolvedCredentials
 }
 
 function Get-DataverseConnection {
@@ -68,7 +91,12 @@ function Get-DataverseConnection {
   if ($Write -and ($Env -eq "prod" -or $base -eq $config.Environments.prod) -and -not $AllowProdWrite) {
     throw "Prod ist nur lesend erlaubt. Schreiben nur mit -AllowProdWrite nach ausdrücklicher Freigabe."
   }
-  $credentials = Get-ProjectCredentials
+  $credentialEnv = $Env
+  if ($Env -eq "host") {
+    $matchingEnvironments = @(@("dev", "test", "prod") | Where-Object { $config.Environments.$_ -eq $base })
+    if ($matchingEnvironments.Count -eq 1) { $credentialEnv = $matchingEnvironments[0] }
+  }
+  $credentials = Get-ProjectCredentials -Env $credentialEnv
   $token = Invoke-RestMethod -Method Post `
     -Uri "https://login.microsoftonline.com/$($credentials.TenantId)/oauth2/v2.0/token" -Body @{
       client_id = $credentials.ClientId

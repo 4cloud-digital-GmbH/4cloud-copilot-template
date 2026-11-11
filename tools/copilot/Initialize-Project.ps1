@@ -25,18 +25,6 @@ if ($targetRoot -eq $sourceRoot -or
   throw "Mastervorlage und Ziel dürfen nicht identisch oder ineinander verschachtelt sein."
 }
 
-function Assert-NoReparsePoint([string]$Path) {
-  $current = $Path
-  while ($current) {
-    if (Test-Path -LiteralPath $current) {
-      if ((Get-Item -LiteralPath $current -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
-        throw "Verknüpfungen/Junctions im Kopierpfad sind nicht erlaubt: $current"
-      }
-    }
-    $current = [IO.Path]::GetDirectoryName($current)
-  }
-}
-
 $files = @(
   ".github\copilot-instructions.md",
   ".github\instructions\dataverse-plugins.instructions.md",
@@ -59,14 +47,12 @@ $files = @(
 $localFiles = @("CrmAccess\appsettings.json", "CrmAccess\credentials.json")
 foreach ($relative in @($files) + @($localFiles) + @(".gitignore")) {
   $destination = Join-Path $targetRoot $relative
-  Assert-NoReparsePoint $destination
   if (Test-Path -LiteralPath $destination -PathType Container) {
     throw "Dateipfad ist bereits ein Verzeichnis: $relative"
   }
 }
 foreach ($relative in @($files) + @(".gitignore")) {
   $source = Join-Path $sourceRoot $relative
-  Assert-NoReparsePoint $source
   if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Vorlagendatei fehlt: $relative" }
 }
 

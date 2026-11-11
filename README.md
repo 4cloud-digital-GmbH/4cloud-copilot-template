@@ -5,6 +5,62 @@ Mastervorlage, keine fertig konfigurierte oder bereits verbundene Kundenumgebung
 Es enthält keine echten Zugangsdaten. Alle projektspezifischen Werte stehen als
 `{{PLACEHOLDER}}` in den JSON-Konfigurationen.
 
+## Manuelle Schritte für den Projekt-Owner
+
+Copilot übernimmt die Dateikopie, liest vorhandene Projektinformationen und füllt
+eindeutig belegbare Konfigurationswerte aus. Folgende Schritte muss der Owner selbst
+ausführen oder verantwortliche Administratoren darum bitten:
+
+1. **Repositories bereitstellen:** Vorlagenrepository klonen. Ein
+   Kundenrepository muss der Owner bei Bedarf selbst bereitstellen und lokal
+   klonen. Copilot erstellt oder initialisiert keine GitHub-Repositories und
+   führt auch kein `git init` aus. Copilot im Root des Vorlagen-Clones starten
+   und den Zielpfad angeben. Bestehende Projektdateien werden nicht automatisch
+   committet oder gepusht.
+2. **Offene Angaben klären:** Von Copilot erkannte Konflikte und Rückfragen
+   beantworten, insbesondere bei mehrdeutigen Umgebungen, Publishern, Pipeline-
+   oder DevOps-Status. Nicht belegbare Werte werden nicht automatisch geraten.
+   Azure DevOps wird immer verwendet. Copilot ermittelt Organisation und Projekt
+   zuerst über Azure-DevOps-MCP und fragt nur bei fehlendem Zugriff oder
+   mehrdeutiger Zuordnung nach. Auftragsbezogene Lese-/Schreiboperationen sind
+   erlaubt; kein separates Zugriffsformular und keine Test-Schreibaktionen beim
+   Setup. Der Kundenname
+   (`Project.Customer`) entspricht immer dem exakten DevOps-Projektnamen;
+   er wird nicht separat erfragt. Vor Pipeline-
+   Recherche klärt es Vorhandensein und Nutzung der Deploymentpipelines.
+   Vor Client-ID-Angaben fragt es, ob ein
+   Service Principal für lokale Skripte existiert und für welche Umgebungen.
+3. **Zugangsdaten lokal vervollständigen:** Vor Tenant-/Client-ID zuerst fragen,
+   ob ein Service Principal existiert und für welche Umgebung(en) er vorgesehen
+   ist. Eine vorhandene Power-Platform-Verbindung nicht ungeprüft als die
+   Skript-Identität übernehmen. Client-IDs je Umgebung eintragen; die
+   Client-Secrets nur lokal in `CrmAccess\credentials.json` des Kundenprojekts
+   hinterlegen. Secrets niemals im Chat, in `*.example.json` oder in Git ablegen.
+4. **Berechtigungen sicherstellen:** Nur für bestätigte Integrationen die
+   benötigten Rollen einrichten: Dataverse-App-Benutzer und Service Principals
+   je verwendeter Umgebung, Azure-DevOps-Zugriff sowie Pipeline-/Zielumgebungs-
+   Rechte. Pipeline-/Service-Principal-Nutzung nicht voraussetzen; bei Bedarf den
+   zuständigen Administrator einbeziehen.
+5. **Lokale Tools anmelden:** Für `DevOps.ps1` Azure CLI installieren und sich
+   separat mit `az login` anmelden. Nur für bestätigte
+   Pipeline-Deployments Power Platform CLI und ein PAC-Profil für den
+   konfigurierten Pipeline-Host einrichten. Geheimnisse nicht als
+   Kommandozeilenargument übergeben.
+6. **Ergebnis und Git prüfen:** Automatisch übernommene Werte und Dateikonflikte
+   überprüfen. Sicherstellen, dass `CrmAccess\credentials.json` und
+   `CrmAccess\appsettings.json` nicht bereits von Git verfolgt werden; eine
+   `.gitignore` schützt keine Dateien, die schon versioniert sind.
+7. **Verbindungen separat testen:** Der Setup-Skill und
+   `Test-Template.ps1` arbeiten offline und bestätigen keine echten
+   Berechtigungen oder Verbindungen. Bei einem ausdrücklichen Rechercheauftrag
+   kann Copilot lesende Azure-DevOps-/Power-Platform-MCP-Abfragen für das
+   benannte Projekt bzw. DEV verwenden. UAT/Prod auch lesend nur nach
+   ausdrücklicher Bestätigung abfragen. Verbindungen und Deployments anschließend
+   separat gezielt auf Dev/Test prüfen.
+
+Produktionsänderungen benötigen weiterhin eine ausdrückliche Freigabe im aktuellen
+Auftrag. `-AllowProdWrite` allein ist keine Freigabe.
+
 ## Zentraler Einstieg nach dem Klonen
 
 Nach dem Klonen dieses Vorlagenrepositories Copilot in dessen Root starten.
@@ -12,9 +68,12 @@ Als erste Eingabe genügt:
 
 > Verwende project-setup für das Projekt unter `C:\Repos\Kundenprojekt`.
 
-Ohne Pfad fragt der Skill zuerst nur nach dem Zielpfad. Das Kundenrepository muss
-bereits geklont sein bzw. das Zielverzeichnis existieren. Du musst keine
-Vorlagendateien vorab manuell in das Kundenprojekt kopieren.
+Ohne Pfad fragt der Skill zuerst nur nach dem Zielpfad. Das Zielverzeichnis muss
+existieren. Fehlt dort ein Git-Repository, erstellt oder initialisiert Copilot
+keines und prüft auch kein GitHub-Repository. Die lokalen Vorlagendateien können
+trotzdem übernommen werden. Bei fehlenden Git-abgeleiteten Werten fragt Copilot
+nach dem Pfad zu einem vorhandenen lokalen Projekt-Checkout. Unbeantwortete
+Fragen und Platzhalter bedeuten, dass die Einrichtung unvollständig bleibt.
 
 Der Ablauf:
 
@@ -29,11 +88,21 @@ Der Ablauf:
    Zielkonfigurationen übernehmen, z. B. DevOps-Organisation/Projekt aus Origin,
    Standardbranch aus lokalem Origin-HEAD, Codepfade aus der Struktur und
    Umgebungs-URLs aus expliziter Projektkonfiguration.
-4. **Nur Restfragen stellen:** Fehlende oder widersprüchliche Angaben gebündelt
-   erfragen. Keine Kunden-, Umgebungs- oder Pipelinewerte erraten. Ein ClientSecret
-   niemals im Chat nennen: nur direkt lokal im Kundenprojekt eintragen.
-5. **Offline prüfen:** Vorlage testen, verbleibende Platzhalter und notwendige
-   lokale Schritte melden. Keine Anmeldung oder Remote-Abfrage durchführen.
+   Wenn der Nutzer es ausdrücklich beauftragt, das benannte Projekt zusätzlich
+   mit Azure-DevOps-MCP (Projekt, Repository, Branches, Prozessstatus) und
+   Power-Platform-MCP in DEV (Publisher der konkreten Solution, Pipeline, Stages)
+   lesend durchsuchen. Test- und Prod-Pipeline können getrennte Namen haben.
+   Bei fehlendem Zugriff oder ohne Treffer den Grund nennen
+   und gezielt nachfragen; UAT/Prod nur nach separater Lesefreigabe abfragen.
+4. **Offene Fragen klären:** Nach der Recherche fehlende oder widersprüchliche,
+   nicht geheime Angaben in kleinen thematischen Gruppen vor der Fertigmeldung
+   erfragen. Keine Kunden-, Umgebungs- oder Pipelinewerte erraten. Ein
+   ClientSecret niemals im Chat erfragen oder nennen: nur direkt lokal im
+   Kundenprojekt eintragen. Ohne Antworten bleibt die Einrichtung unvollständig.
+5. **Offline prüfen:** Vorlage testen und verbleibende Platzhalter sowie
+   notwendige lokale Schritte melden. Keine GitHub-Repository-Prüfung oder
+   -Erstellung und keine Anmeldung, Schreibaktion oder Bereitstellung als
+   Nebeneffekt durchführen.
 
 Die zentrale Mastervorlage bleibt unverändert. Jeder belegte automatisch
 übernommene Wert wird mit seiner lokalen Quelle ausgewiesen. Bereits befüllte
@@ -108,7 +177,7 @@ nicht als Ersatz für beliebige bestehende .NET-Appsettings.
 | Hilfsdatei | `tools\copilot\Common.ps1` | Konfiguration, Authentifizierung und Import-Wartefunktion |
 | Offline-Tests | `tools\copilot\Test-Template.ps1` | Syntax, Platzhaltervertrag und Verhalten mit simulierten Diensten |
 | Lokal | `CrmAccess\appsettings.json` | Projektwerte und Umgebungen, mit Platzhaltern vorbelegt |
-| Lokal | `CrmAccess\credentials.json` | Tenant-/Client-ID und Secret, mit Platzhaltern vorbelegt |
+| Lokal | `CrmAccess\credentials.json` | Tenant-ID sowie Client-ID/Secret je Umgebung, mit Platzhaltern vorbelegt |
 | Beispiele | `CrmAccess\appsettings.example.json`, `CrmAccess\credentials.example.json` | Versionierbare, unveränderte Platzhaltervorlagen |
 | Git | `.gitignore` | Lokale Konfiguration, Arbeitsdateien und Buildartefakte ausschließen |
 
@@ -125,15 +194,16 @@ Codepfade/Build-/Testbefehle und die lokale App-Identität.
 
 Standardisiert bleiben technische Werte wie API-Versionen, OAuth-Endpunkt,
 Azure-DevOps-Ressourcen-ID und SOAP-Namensräume. Das sind keine Kundenwerte.
-Fehlen Pipeline/DevOps oder andere notwendige Angaben, bleibt die Einrichtung
+Fehlen notwendige Azure-DevOps-Angaben oder Angaben zu verwendeten Pipelines, bleibt die Einrichtung
 ausdrücklich unvollständig; betroffene Skripte nicht verwenden.
 
 - PowerShell 7 für alle Skripte; Offline-Tests benötigen keine Zusatzmodule.
-- Azure CLI und lokale Anmeldung für `DevOps.ps1`.
-- Dataverse-App-Benutzer mit passenden Rollen je Umgebung für API-Zugriffe.
-- Power Platform CLI für Deployments; bestehendes Auth-Profil passend zum
-  Pipeline-Host und dessen Berechtigungen lokal einrichten. Keine automatische
-  Übergabe des ClientSecrets als Kommandozeilenargument.
+- Azure CLI und lokale Anmeldung für `DevOps.ps1`; Azure DevOps wird immer verwendet.
+- Dataverse-App-Benutzer mit passenden Rollen je Umgebung nur, wenn die
+  bestätigte Authentifizierung Service Principals nutzt.
+- Power Platform CLI und passendes Auth-Profil nur für bestätigte
+  Pipeline-Deployments. Keine automatische Übergabe von ClientSecrets als
+  Kommandozeilenargument.
 - Token werden nicht in Dateien gecacht. API-Aufrufe authentifizieren sich erneut.
 - `-AllowProdWrite` ersetzt keine ausdrückliche Freigabe im aktuellen Gespräch.
 - Import-Warteprüfungen sind keine verteilte Sperre: Deployments organisatorisch

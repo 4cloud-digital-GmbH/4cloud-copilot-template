@@ -106,8 +106,8 @@ try {
   $junction = Join-Path $linkedCustomer ".github"
   try {
     New-Item -ItemType Junction -Path $junction -Target $junctionTarget | Out-Null
-    Assert-Throws { & $initialize -ProjectPath $linkedCustomer } "Junctions"
-    Assert-True (@(Get-ChildItem -LiteralPath $junctionTarget -Force).Count -eq 0) "Keine Dateien über Junction ins falsche Ziel kopieren"
+    & $initialize -ProjectPath $linkedCustomer | Out-Null
+    Assert-True (Test-Path -LiteralPath (Join-Path $junctionTarget "copilot-instructions.md")) "Dateien über Junction ins verknüpfte Ziel kopieren"
   } finally {
     if (Test-Path -LiteralPath $junction) { [IO.Directory]::Delete($junction) }
   }
@@ -117,6 +117,8 @@ try {
   $global:offlineImportFailed = $false
   $global:offlineTestStageId = "11111111-1111-1111-1111-111111111111"
   $global:offlineProdStageId = "22222222-2222-2222-2222-222222222222"
+  $global:offlineTestPipelineId = "33333333-3333-3333-3333-333333333333"
+  $global:offlineProdPipelineId = "44444444-4444-4444-4444-444444444444"
 
   function Invoke-RestMethod {
     param($Method, $Uri, $Headers, $Body, $ContentType)
@@ -125,10 +127,17 @@ try {
       return [pscustomobject]@{ access_token = "offline-token"; expires_in = 3600 }
     }
     if ($Uri -match '/deploymentpipelines\?') {
-      return [pscustomobject]@{ value = @([pscustomobject]@{ deploymentpipelineid = "33333333-3333-3333-3333-333333333333" }) }
+      $id = if ($Uri -match "ExampleTestPipeline") { $global:offlineTestPipelineId } else { $global:offlineProdPipelineId }
+      return [pscustomobject]@{ value = @([pscustomobject]@{ deploymentpipelineid = $id }) }
     }
     if ($Uri -match '/deploymentstages\?') {
-      $id = if ($Uri -match "Quality Gate") { $global:offlineTestStageId } else { $global:offlineProdStageId }
+      if ($Uri -match "Quality Gate") {
+        if (-not $Uri.Contains($global:offlineTestPipelineId)) { throw "TEST-Stage muss zur TEST-Pipeline gehören." }
+        $id = $global:offlineTestStageId
+      } else {
+        if (-not $Uri.Contains($global:offlineProdPipelineId)) { throw "PROD-Stage muss zur PROD-Pipeline gehören." }
+        $id = $global:offlineProdStageId
+      }
       return [pscustomobject]@{ value = @([pscustomobject]@{ deploymentstageid = $id }) }
     }
     if ($Uri -match '/deploymentstageruns\?') {
@@ -205,13 +214,17 @@ try {
     SOLUTION_PUBLISHER_PREFIX = "example"; DEV_URL = "https://dev.example.invalid"
     TEST_URL = "https://test.example.invalid"; PROD_URL = "https://prod.example.invalid"
     PIPELINE_HOST_URL = "https://host.example.invalid"; DEVOPS_ORGANIZATION = "example-org"
-    DEVOPS_PROJECT = "Example Project"; STATE_TODO = "New"; STATE_DOING = "Active"; STATE_TEST = "Testing"
+    DEVOPS_PROJECT = "Example Project"; STATE_TODO = "New"; STATE_DOING = "Active"; STATE_REVIEW = "Review"; STATE_TEST = "Testing"
     STATE_READY_FOR_PROD = "Ready"; STATE_DONE = "Resolved"; STATE_CLOSED = "Closed"; STATE_REMOVED = "Removed"
-    PIPELINE_NAME = "Example Pipeline"; TEST_STAGE_NAME = "Quality Gate"; PROD_STAGE_NAME = "Production"
+    TEST_PIPELINE_NAME = "ExampleTestPipeline"; PROD_PIPELINE_NAME = "ExampleProdPipeline"
+    TEST_STAGE_NAME = "Quality Gate"; PROD_STAGE_NAME = "Production"
     PAC_PROFILE_NAME = "OfflineProfile"; DEFAULT_BRANCH = "main"; PLUGIN_PATHS = "Plugins"
     WEBRESOURCE_PATH = "WebResources"; TEST_COMMAND = "node --test"; PLUGIN_BUILD_COMMAND = "dotnet build"
-    TENANT_ID = "55555555-5555-5555-5555-555555555555"; CLIENT_ID = "66666666-6666-6666-6666-666666666666"
-    CLIENT_SECRET = "offline-dummy-not-a-real-secret"
+    TENANT_ID = "55555555-5555-5555-5555-555555555555"
+    DEV_CLIENT_ID = "66666666-6666-6666-6666-666666666666"; DEV_CLIENT_SECRET = "offline-dev-dummy"
+    TEST_CLIENT_ID = "77777777-7777-7777-7777-777777777777"; TEST_CLIENT_SECRET = "offline-test-dummy"
+    PROD_CLIENT_ID = "88888888-8888-8888-8888-888888888888"; PROD_CLIENT_SECRET = "offline-prod-dummy"
+    HOST_CLIENT_ID = "99999999-9999-9999-9999-999999999999"; HOST_CLIENT_SECRET = "offline-host-dummy"
   }
   $filledConfig = [regex]::Replace($settingsTemplate, '\{\{([A-Z][A-Z0-9_]*)\}\}', {
     param($match)
@@ -225,7 +238,39 @@ try {
   Set-Content -LiteralPath (Join-Path $fixture "CrmAccess\credentials.json") -Value $filledCredentials
   $config = Get-ProjectConfig -Root $fixture
   Assert-True ($config.Environments.host -ne $config.Environments.dev) "Separater Pipeline-Host"
-  Get-ProjectCredentials -Root $fixture | Out-Null
+  $changed = $filledConfig | ConvertFrom-Json
+  $changed.Deployment.ProdStageName = $changed.Deployment.TestStageName
+  $changed | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $configFile
+  $sameStageConfig = Get-ProjectConfig -Root $fixture
+  Assert-True ($sameStageConfig.Deployment.ProdStageName -eq $sameStageConfig.Deployment.TestStageName) "Gleiche Stage-Namen in getrennten Pipelines sind zulässig"
+  $changed.Deployment.ProdPipelineName = $changed.Deployment.TestPipelineName
+  $changed | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $configFile
+  Assert-Throws { Get-ProjectConfig -Root $fixture } "derselben Pipeline"
+  $legacyConfig = $filledConfig | ConvertFrom-Json
+  $legacyConfig.Deployment = [pscustomobject]@{
+    PipelineName = "ExampleLegacyPipeline"
+    TestStageName = "Quality Gate"
+    ProdStageName = "Production"
+    PacProfile = "OfflineProfile"
+  }
+  $legacyConfig | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $configFile
+  $legacyPipelineConfig = Get-ProjectConfig -Root $fixture
+  Assert-True ($legacyPipelineConfig.Deployment.TestPipelineName -eq "ExampleLegacyPipeline" -and
+    $legacyPipelineConfig.Deployment.ProdPipelineName -eq "ExampleLegacyPipeline") "Legacy-Einzelpipeline bleibt kompatibel"
+  Set-Content -LiteralPath $configFile -Value $filledConfig
+  $devCredentials = Get-ProjectCredentials -Root $fixture
+  $testCredentials = Get-ProjectCredentials -Env test -Root $fixture
+  $prodCredentials = Get-ProjectCredentials -Env prod -Root $fixture
+  Assert-True ($devCredentials.ClientId -eq $values.DEV_CLIENT_ID -and
+    $testCredentials.ClientId -eq $values.TEST_CLIENT_ID -and
+    $prodCredentials.ClientId -eq $values.PROD_CLIENT_ID) "Umgebungsspezifische Service Principals"
+  $changed = $filledConfig | ConvertFrom-Json
+  $changed.Environments.host = $changed.Environments.prod
+  $changed | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $configFile
+  Get-DataverseConnection -Env host | Out-Null
+  $prodHostTokenRequest = @($global:offlineRequests | Where-Object { $_.Uri -like "https://login.microsoftonline.com/*" } | Select-Object -Last 1)[0]
+  Assert-True ($prodHostTokenRequest.Body.client_id -eq $values.PROD_CLIENT_ID) "Pipeline-Host nutzt bei gleicher PROD-URL die PROD-Identität"
+  Set-Content -LiteralPath $configFile -Value $filledConfig
   $script:checks++
   $changed = $filledConfig | ConvertFrom-Json
   $changed.Environments.test = $changed.Environments.prod + "/"
@@ -234,6 +279,7 @@ try {
   Set-Content -LiteralPath $configFile -Value $filledConfig
 
   $tools = Join-Path $fixture "tools\copilot"
+  $global:offlineRequests.Clear()
   Assert-Throws { & "$tools\dv.ps1" -Env prod -Path accounts -Method PATCH -Body @{} } "Prod"
   Assert-Throws { & "$tools\Import-Solution.ps1" -Env prod -Zip missing.zip } "Prod"
   Assert-Throws { & "$tools\Remove-ActiveCustomization.ps1" -Env prod -ComponentName WebResource -ComponentId ([guid]::Empty) } "Prod"
@@ -249,6 +295,9 @@ try {
   $account = & "$tools\dv.ps1" -Env dev -Path accounts
   Assert-True ($account.name -eq "Offline account") "Dataverse-Collection entpacken"
   Assert-True ($global:offlineRequests[-1].Headers.Authorization -match '^Bearer\s+\S+$') "Bearer-Authentifizierung"
+  & "$tools\dv.ps1" -Env test -Path accounts | Out-Null
+  $testTokenRequest = @($global:offlineRequests | Where-Object { $_.Uri -like "https://login.microsoftonline.com/*" } | Select-Object -Last 1)[0]
+  Assert-True ($testTokenRequest.Body.client_id -eq $values.TEST_CLIENT_ID) "Dataverse-Test verwendet Test-Identität"
   $raw = & "$tools\dv.ps1" -Env dev -Path accounts -Raw
   Assert-True ($raw.value[0].name -eq "Offline account") "Raw-Antwort erhalten"
   Assert-Throws { & "$tools\dv.ps1" -Env dev -Path "https://other.example.invalid/" } "relativer"
@@ -293,6 +342,13 @@ try {
 
   $deployResult = & "$tools\Deploy-Pipeline.ps1" -SolutionName Task123Example -Stage TEST
   Assert-True ($deployResult -match "erfolgreich") "TEST-Pipeline mit konfigurierten Stage-Namen"
+  $hostTokenRequest = @($global:offlineRequests | Where-Object {
+    $_.Uri -like "https://login.microsoftonline.com/*" -and $_.Body.scope -eq "https://host.example.invalid/.default"
+  } | Select-Object -Last 1)[0]
+  Assert-True ($hostTokenRequest.Body.client_id -eq $values.HOST_CLIENT_ID) "Separater Pipeline-Host verwendet eigene Identität"
+  $pipelineQueries = @($global:offlineRequests | Where-Object { $_.Uri -match '/deploymentpipelines\?' })
+  Assert-True (@($pipelineQueries | Where-Object Uri -match "ExampleTestPipeline").Count -ge 1) "TEST verwendet seine konfigurierte Pipeline"
+  Assert-True (@($pipelineQueries | Where-Object Uri -match "ExampleProdPipeline").Count -ge 1) "PROD verwendet seine konfigurierte Pipeline"
   Assert-True ($global:offlinePacCalls[-1] -eq "auth select --index 1") "Aktives pac-Profil wiederherstellen"
   $hostRequests = @($global:offlineRequests | Where-Object { $_.Uri -match '/deployment(pipelines|stages|stageruns)' })
   Assert-True (@($hostRequests | Where-Object { $_.Uri -notlike 'https://host.example.invalid/*' }).Count -eq 0) "Pipeline-Abfragen auf separatem Host"
